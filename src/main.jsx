@@ -19,6 +19,14 @@ const FAVICON_SIZES = [16, 32, 48, 64, 128, 180, 192, 512];
 const ICO_SIZES = [16, 32, 48];
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
+const FONT_OPTIONS = [
+  { label: 'Inter', family: 'Inter' },
+  { label: 'Montserrat', family: 'Montserrat' },
+  { label: 'Roboto Slab', family: 'Roboto Slab' },
+  { label: 'Playfair Display', family: 'Playfair Display' },
+  { label: 'Space Grotesk', family: 'Space Grotesk' },
+  { label: 'Lora', family: 'Lora' }
+];
 
 function App() {
   const [activeTab, setActiveTab] = useState('favicon');
@@ -321,12 +329,15 @@ function FaviconGenerator() {
 }
 
 function OgImageGenerator() {
+  const [mode, setMode] = useState('designed');
   const [source, setSource] = useState(null);
   const [image, setImage] = useState(null);
   const [fileName, setFileName] = useState('');
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [accent, setAccent] = useState('#0f766e');
+  const [fontFamily, setFontFamily] = useState('Inter');
+  const [overlayOpacity, setOverlayOpacity] = useState(72);
   const [title, setTitle] = useState('Launch-ready website assets');
   const [subtitle, setSubtitle] = useState('Generate favicons and social preview images from one local tool.');
   const [siteName, setSiteName] = useState('example.com');
@@ -355,12 +366,16 @@ function OgImageGenerator() {
   const drawPreview = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderOgCanvas(canvas, { image, scale, offset, accent, title, subtitle, siteName, preview: true });
-  }, [accent, image, offset, scale, siteName, subtitle, title]);
+    renderOgCanvas(canvas, { mode, image, scale, offset, accent, fontFamily, overlayOpacity, title, subtitle, siteName, preview: true });
+  }, [accent, fontFamily, image, mode, offset, overlayOpacity, scale, siteName, subtitle, title]);
 
   useEffect(() => {
     drawPreview();
   }, [drawPreview]);
+
+  useEffect(() => {
+    document.fonts?.ready?.then(drawPreview);
+  }, [drawPreview, fontFamily]);
 
   const onUpload = (event) => {
     const file = event.target.files?.[0];
@@ -400,10 +415,11 @@ function OgImageGenerator() {
   };
 
   const generateOgImage = async () => {
+    await document.fonts?.ready;
     const canvas = document.createElement('canvas');
     canvas.width = OG_WIDTH;
     canvas.height = OG_HEIGHT;
-    renderOgCanvas(canvas, { image, scale, offset, accent, title, subtitle, siteName, preview: false });
+    renderOgCanvas(canvas, { mode, image, scale, offset, accent, fontFamily, overlayOpacity, title, subtitle, siteName, preview: false });
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     setGenerated({ blob });
   };
@@ -443,18 +459,51 @@ function OgImageGenerator() {
         </div>
 
         <div className="controls">
-          <label className="field-row">
-            <span>Title</span>
-            <input value={title} maxLength={74} onChange={(event) => setTitle(event.target.value)} />
-          </label>
-          <label className="field-row">
-            <span>Subtitle</span>
-            <textarea value={subtitle} maxLength={130} onChange={(event) => setSubtitle(event.target.value)} rows="3" />
-          </label>
-          <label className="field-row">
-            <span>Site</span>
-            <input value={siteName} maxLength={42} onChange={(event) => setSiteName(event.target.value)} />
-          </label>
+          <div className="segmented-control" role="group" aria-label="Open Graph output mode">
+            <button
+              aria-pressed={mode === 'designed'}
+              className={mode === 'designed' ? 'segment-button is-active' : 'segment-button'}
+              onClick={() => setMode('designed')}
+              type="button"
+            >
+              Designed card
+            </button>
+            <button
+              aria-pressed={mode === 'image'}
+              className={mode === 'image' ? 'segment-button is-active' : 'segment-button'}
+              onClick={() => setMode('image')}
+              type="button"
+            >
+              Just image
+            </button>
+          </div>
+
+          {mode === 'designed' && (
+            <>
+              <label className="field-row">
+                <span>Title</span>
+                <input value={title} maxLength={74} onChange={(event) => setTitle(event.target.value)} />
+              </label>
+              <label className="field-row">
+                <span>Subtitle</span>
+                <textarea value={subtitle} maxLength={130} onChange={(event) => setSubtitle(event.target.value)} rows="3" />
+              </label>
+              <label className="field-row">
+                <span>Site</span>
+                <input value={siteName} maxLength={42} onChange={(event) => setSiteName(event.target.value)} />
+              </label>
+              <label className="field-row">
+                <span>Font</span>
+                <select value={fontFamily} onChange={(event) => setFontFamily(event.target.value)}>
+                  {FONT_OPTIONS.map((font) => (
+                    <option key={font.family} value={font.family}>
+                      {font.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
 
           <label className="control-row">
             <span>
@@ -464,14 +513,23 @@ function OgImageGenerator() {
             <input type="range" min="0.65" max="2.7" step="0.01" value={scale} onChange={(event) => setScale(Number(event.target.value))} disabled={!image} />
           </label>
 
-          <ColorSwatches label="Accent" value={accent} onChange={setAccent} colors={['#0f766e', '#2563eb', '#be123c', '#7c3aed', '#ea580c']} />
+          {mode === 'designed' && (
+            <>
+              <ColorSwatches label="Accent" value={accent} onChange={setAccent} colors={['#0f766e', '#2563eb', '#be123c', '#7c3aed', '#ea580c']} custom />
+              <label className="control-row">
+                <span>Overlay</span>
+                <input type="range" min="0" max="95" step="1" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} />
+                <small className="range-value">{overlayOpacity}%</small>
+              </label>
+            </>
+          )}
 
           <div className="button-row">
             <button className="secondary-button" onClick={resetArtwork} type="button">
               <RotateCcw size={18} />
               Reset
             </button>
-            <button className="primary-button" onClick={generateOgImage} type="button">
+            <button className="primary-button" disabled={mode === 'image' && !image} onClick={generateOgImage} type="button">
               <Images size={18} />
               Generate
             </button>
@@ -519,7 +577,7 @@ function SectionHeader({ title, description, icon }) {
   );
 }
 
-function ColorSwatches({ label, value, onChange, colors }) {
+function ColorSwatches({ label, value, onChange, colors, custom = false }) {
   return (
     <div className="control-row">
       <span>
@@ -537,6 +595,11 @@ function ColorSwatches({ label, value, onChange, colors }) {
             type="button"
           />
         ))}
+        {custom && (
+          <label className="custom-color" title="Custom color">
+            <input aria-label="Custom accent color" type="color" value={value} onChange={(event) => onChange(event.target.value)} />
+          </label>
+        )}
       </div>
     </div>
   );
@@ -638,7 +701,7 @@ async function renderIconBlob(image, size, scale, offset, background) {
 }
 
 function renderOgCanvas(canvas, settings) {
-  const { image, scale, offset, accent, title, subtitle, siteName, preview } = settings;
+  const { mode, image, scale, offset, accent, fontFamily, overlayOpacity, title, subtitle, siteName, preview } = settings;
   const ctx = canvas.getContext('2d');
   const width = canvas.width;
   const height = canvas.height;
@@ -667,10 +730,32 @@ function renderOgCanvas(canvas, settings) {
     ctx.restore();
   }
 
+  if (mode === 'image') {
+    if (!image) {
+      ctx.fillStyle = 'rgba(255,255,255,0.82)';
+      ctx.font = `700 ${34 * ratio}px Inter, Segoe UI, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Upload artwork to generate a just-image OG preview', width / 2, height / 2);
+      ctx.textAlign = 'left';
+    } else {
+      ctx.clearRect(0, 0, width, height);
+      const fit = Math.max(width / image.width, height / image.height);
+      const drawWidth = image.width * fit * scale;
+      const drawHeight = image.height * fit * scale;
+      const drawX = width / 2 - drawWidth / 2 + safeOffset.x;
+      const drawY = height / 2 - drawHeight / 2 + safeOffset.y;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    }
+    return;
+  }
+
   const overlay = ctx.createLinearGradient(0, 0, width, 0);
-  overlay.addColorStop(0, 'rgba(17, 24, 39, 0.93)');
-  overlay.addColorStop(0.54, 'rgba(17, 24, 39, 0.72)');
-  overlay.addColorStop(1, 'rgba(17, 24, 39, 0.18)');
+  const alpha = overlayOpacity / 100;
+  overlay.addColorStop(0, `rgba(17, 24, 39, ${0.98 * alpha})`);
+  overlay.addColorStop(0.54, `rgba(17, 24, 39, ${alpha})`);
+  overlay.addColorStop(1, `rgba(17, 24, 39, ${0.46 * alpha})`);
   ctx.fillStyle = overlay;
   ctx.fillRect(0, 0, width, height);
 
@@ -681,16 +766,16 @@ function renderOgCanvas(canvas, settings) {
   ctx.fill();
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = `800 ${70 * ratio}px Inter, Segoe UI, sans-serif`;
+  ctx.font = `800 ${70 * ratio}px "${fontFamily}", Inter, Segoe UI, sans-serif`;
   ctx.textBaseline = 'top';
   wrapText(ctx, title || 'Untitled preview', pad, 142 * ratio, 650 * ratio, 82 * ratio, 3);
 
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = `500 ${31 * ratio}px Inter, Segoe UI, sans-serif`;
+  ctx.font = `500 ${31 * ratio}px "${fontFamily}", Inter, Segoe UI, sans-serif`;
   wrapText(ctx, subtitle || 'Add a concise description for link previews.', pad, 405 * ratio, 610 * ratio, 43 * ratio, 2);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = `750 ${24 * ratio}px Inter, Segoe UI, sans-serif`;
+  ctx.font = `750 ${24 * ratio}px "${fontFamily}", Inter, Segoe UI, sans-serif`;
   ctx.fillText(siteName || 'example.com', pad, 552 * ratio);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';

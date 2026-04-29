@@ -12,6 +12,9 @@ A browser-based React tool for creating website favicons and Open Graph preview 
 - Switch to an `OG:image` generator tab.
 - Compose and download a 1200 x 630 `og-image.png`.
 - Copy Open Graph and Twitter card implementation tags.
+- Use `Just image` mode when the uploaded artwork should become the OG image directly.
+- Select from bundled free web fonts for composed OG cards.
+- Set a custom accent color and adjust overlay transparency.
 
 ## Development
 
