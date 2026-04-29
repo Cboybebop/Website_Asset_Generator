@@ -743,9 +743,9 @@ function renderOgCanvas(canvas, settings) {
 
   const overlay = ctx.createLinearGradient(0, 0, width, 0);
   const alpha = overlayOpacity / 100;
-  overlay.addColorStop(0, `rgba(17, 24, 39, ${Math.min(alpha + 0.21, 0.98)})`);
+  overlay.addColorStop(0, `rgba(17, 24, 39, ${0.98 * alpha})`);
   overlay.addColorStop(0.54, `rgba(17, 24, 39, ${alpha})`);
-  overlay.addColorStop(1, `rgba(17, 24, 39, ${Math.max(alpha - 0.54, 0)})`);
+  overlay.addColorStop(1, `rgba(17, 24, 39, ${0.46 * alpha})`);
   ctx.fillStyle = overlay;
   ctx.fillRect(0, 0, width, height);
 
