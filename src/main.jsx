@@ -374,7 +374,7 @@ function OgImageGenerator() {
   }, [drawPreview]);
 
   useEffect(() => {
-    document.fonts?.ready.then(drawPreview);
+    document.fonts?.ready?.then(drawPreview);
   }, [drawPreview, fontFamily]);
 
   const onUpload = (event) => {
