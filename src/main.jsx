@@ -460,10 +460,20 @@ function OgImageGenerator() {
 
         <div className="controls">
           <div className="segmented-control" role="group" aria-label="Open Graph output mode">
-            <button className={mode === 'designed' ? 'segment-button is-active' : 'segment-button'} onClick={() => setMode('designed')} type="button">
+            <button
+              aria-pressed={mode === 'designed'}
+              className={mode === 'designed' ? 'segment-button is-active' : 'segment-button'}
+              onClick={() => setMode('designed')}
+              type="button"
+            >
               Designed card
             </button>
-            <button className={mode === 'image' ? 'segment-button is-active' : 'segment-button'} onClick={() => setMode('image')} type="button">
+            <button
+              aria-pressed={mode === 'image'}
+              className={mode === 'image' ? 'segment-button is-active' : 'segment-button'}
+              onClick={() => setMode('image')}
+              type="button"
+            >
               Just image
             </button>
           </div>
