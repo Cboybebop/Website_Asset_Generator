@@ -1,4 +1,6 @@
 # FavIcon Generator
+<img width="2285" height="1036" alt="image" src="https://github.com/user-attachments/assets/888dd616-d8a4-4224-9243-fcd43dec9b0a" />
+
 
 A browser-based React tool for creating website favicons and Open Graph preview images from uploaded artwork.
 
