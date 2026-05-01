@@ -1,0 +1,20 @@
+{
+  "name": "Website Asset Generator",
+  "short_name": "Asset Generator",
+  "description": "Create and test favicons and Open Graph images locally.",
+  "icons": [
+    {
+      "src": "/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0f766e",
+  "background_color": "#eef3f8",
+  "display": "standalone"
+}

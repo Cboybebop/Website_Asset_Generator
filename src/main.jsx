@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  AlertTriangle,
   Check,
+  CheckCircle,
   Copy,
   Download,
   FileImage,
@@ -9,8 +11,10 @@ import {
   Images,
   Move,
   RotateCcw,
+  Search,
   Sparkles,
   Upload,
+  XCircle,
   ZoomIn
 } from 'lucide-react';
 import './styles.css';
@@ -30,6 +34,11 @@ const FONT_OPTIONS = [
 
 function App() {
   const [activeTab, setActiveTab] = useState('favicon');
+  const activePanel = {
+    favicon: <FaviconGenerator />,
+    og: <OgImageGenerator />,
+    test: <TestTagsGenerator />
+  }[activeTab];
 
   return (
     <main className="app-shell">
@@ -53,10 +62,14 @@ function App() {
             <Images size={18} />
             OG:image Generator
           </button>
+          <button className={activeTab === 'test' ? 'tab-button is-active' : 'tab-button'} onClick={() => setActiveTab('test')} role="tab" type="button">
+            <Search size={18} />
+            Test Tags
+          </button>
         </div>
       </div>
 
-      {activeTab === 'favicon' ? <FaviconGenerator /> : <OgImageGenerator />}
+      {activePanel}
     </main>
   );
 }
@@ -565,6 +578,147 @@ function OgImageGenerator() {
   );
 }
 
+function TestTagsGenerator() {
+  const [url, setUrl] = useState('');
+  const [scope, setScope] = useState('both');
+  const [state, setState] = useState({ status: 'idle', report: null, error: '' });
+
+  const runTest = async () => {
+    setState({ status: 'loading', report: null, error: '' });
+    try {
+      const normalizedUrl = normalizeUrl(url);
+      const fetched = await fetchPageHtml(normalizedUrl);
+      const report = analyzeTags(fetched.html, normalizedUrl, scope);
+      setState({ status: 'done', report: { ...report, fetchedBy: fetched.source }, error: '' });
+    } catch (error) {
+      setState({
+        status: 'error',
+        report: null,
+        error: error.message || 'Unable to inspect this page.'
+      });
+    }
+  };
+
+  const canRun = url.trim().length > 0 && state.status !== 'loading';
+
+  return (
+    <section className="workspace">
+      <div className="tool-panel">
+        <SectionHeader title="Test Tags" description="Check a live page for favicon and social sharing tags." icon={<Search size={22} />} />
+
+        <div className="controls tag-test-controls">
+          <label className="field-row">
+            <span>Page URL</span>
+            <input placeholder="https://example.com" value={url} onChange={(event) => setUrl(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && canRun && runTest()} />
+          </label>
+
+          <div className="segmented-control three-segments" role="group" aria-label="Tags to inspect">
+            <button className={scope === 'both' ? 'segment-button is-active' : 'segment-button'} onClick={() => setScope('both')} type="button">
+              Both
+            </button>
+            <button className={scope === 'favicon' ? 'segment-button is-active' : 'segment-button'} onClick={() => setScope('favicon')} type="button">
+              Favicon
+            </button>
+            <button className={scope === 'og' ? 'segment-button is-active' : 'segment-button'} onClick={() => setScope('og')} type="button">
+              OG Tags
+            </button>
+          </div>
+
+          <button className="primary-button" disabled={!canRun} onClick={runTest} type="button">
+            <Search size={18} />
+            {state.status === 'loading' ? 'Checking...' : 'Check Page'}
+          </button>
+        </div>
+      </div>
+
+      <div className="output-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Tag Report</h2>
+            <p>{state.report ? `Checked ${state.report.url}` : 'Enter a URL to inspect the page metadata.'}</p>
+          </div>
+        </div>
+
+        {state.status === 'idle' && <EmptyReport />}
+        {state.status === 'loading' && <div className="status-card">Fetching and parsing page HTML...</div>}
+        {state.status === 'error' && <ErrorReport message={state.error} />}
+        {state.report && <TagReport report={state.report} />}
+      </div>
+    </section>
+  );
+}
+
+function EmptyReport() {
+  return (
+    <div className="status-card">
+      <Search size={26} />
+      <span>Results will show implemented tags, missing items, and suggested fixes.</span>
+    </div>
+  );
+}
+
+function ErrorReport({ message }) {
+  return (
+    <div className="report-card issue">
+      <div className="report-card-title">
+        <XCircle size={20} />
+        <h3>Could not inspect this page</h3>
+      </div>
+      <p>{message}</p>
+      <pre>{`Try a fully qualified URL such as https://example.com.
+Some sites block browser-based inspection with CORS, bot protection, or private network rules.
+If this keeps failing, view the page source manually and compare it with the suggested tags from the generator tabs.`}</pre>
+    </div>
+  );
+}
+
+function TagReport({ report }) {
+  return (
+    <div className="tag-report">
+      <div className="report-summary">
+        <ScorePill label="Passed" value={report.passed} tone="pass" />
+        <ScorePill label="Warnings" value={report.warnings} tone="warn" />
+        <ScorePill label="Fixes" value={report.fixes} tone="fail" />
+      </div>
+
+      {report.fetchedBy === 'proxy' && (
+        <div className="notice-card">
+          <AlertTriangle size={18} />
+          <span>Direct browser fetch was blocked, so the HTML was read through a public CORS proxy. Asset availability checks may still require manual confirmation.</span>
+        </div>
+      )}
+
+      {report.sections.map((section) => (
+        <div className="report-card" key={section.title}>
+          <div className="report-card-title">
+            {section.status === 'pass' ? <CheckCircle size={20} /> : section.status === 'warn' ? <AlertTriangle size={20} /> : <XCircle size={20} />}
+            <h3>{section.title}</h3>
+          </div>
+
+          <div className="finding-list">
+            {section.items.map((item) => (
+              <div className={`finding-item ${item.status}`} key={`${section.title}-${item.label}`}>
+                <strong>{item.label}</strong>
+                <span>{item.message}</span>
+                {item.fix && <code>{item.fix}</code>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScorePill({ label, value, tone }) {
+  return (
+    <div className={`score-pill ${tone}`}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function SectionHeader({ title, description, icon }) {
   return (
     <div className="section-header">
@@ -860,6 +1014,181 @@ function downloadBlob(blob, name) {
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
+function normalizeUrl(value) {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error('Enter a URL to inspect.');
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const parsed = new URL(withProtocol);
+  return parsed.href;
+}
+
+async function fetchPageHtml(url) {
+  try {
+    const response = await fetch(url, { headers: { Accept: 'text/html' } });
+    if (!response.ok) throw new Error(`Page returned HTTP ${response.status}.`);
+    return { html: await response.text(), source: 'direct' };
+  } catch (directError) {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`Unable to read the page HTML. Direct fetch failed, and proxy fetch returned HTTP ${response.status}.`);
+    }
+    return { html: await response.text(), source: 'proxy', directError };
+  }
+}
+
+function analyzeTags(html, url, scope) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const pageUrl = new URL(url);
+  const sections = [];
+
+  if (scope === 'both' || scope === 'favicon') {
+    sections.push(analyzeFaviconTags(doc, pageUrl));
+  }
+
+  if (scope === 'both' || scope === 'og') {
+    sections.push(analyzeOgTags(doc, pageUrl));
+  }
+
+  const allItems = sections.flatMap((section) => section.items);
+  return {
+    url,
+    sections,
+    passed: allItems.filter((item) => item.status === 'pass').length,
+    warnings: allItems.filter((item) => item.status === 'warn').length,
+    fixes: allItems.filter((item) => item.status === 'fail').length
+  };
+}
+
+function analyzeFaviconTags(doc, pageUrl) {
+  const links = [...doc.querySelectorAll('link')].map((link) => ({
+    rel: (link.getAttribute('rel') || '').toLowerCase(),
+    href: link.getAttribute('href') || '',
+    sizes: link.getAttribute('sizes') || '',
+    type: link.getAttribute('type') || ''
+  }));
+  const iconLinks = links.filter((link) => /\bicon\b/.test(link.rel) && !link.rel.includes('apple'));
+  const appleIcon = links.find((link) => link.rel.includes('apple-touch-icon'));
+  const manifest = links.find((link) => link.rel.includes('manifest'));
+  const hasAnySize = iconLinks.some((link) => link.sizes === 'any');
+  const hasSmallPng = iconLinks.some((link) => /16x16|32x32/.test(link.sizes));
+  const hasRootIco = iconLinks.some((link) => link.href.includes('favicon.ico'));
+
+  const items = [
+    {
+      label: 'Favicon link',
+      status: iconLinks.length ? 'pass' : 'fail',
+      message: iconLinks.length ? `${iconLinks.length} favicon link${iconLinks.length === 1 ? '' : 's'} found.` : 'No explicit favicon link was found in the page head.',
+      fix: iconLinks.length ? '' : '<link rel="icon" href="/favicon.ico" sizes="any">'
+    },
+    {
+      label: 'ICO fallback',
+      status: hasRootIco || hasAnySize ? 'pass' : 'warn',
+      message: hasRootIco || hasAnySize ? 'A broad browser fallback is declared.' : 'Older browsers and some bookmark surfaces work best with favicon.ico or sizes="any".',
+      fix: hasRootIco || hasAnySize ? '' : '<link rel="icon" href="/favicon.ico" sizes="any">'
+    },
+    {
+      label: 'PNG sizes',
+      status: hasSmallPng ? 'pass' : 'warn',
+      message: hasSmallPng ? 'Small PNG favicon sizes are declared.' : 'No 16x16 or 32x32 PNG favicon declaration was found.',
+      fix: hasSmallPng ? '' : '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">'
+    },
+    {
+      label: 'Apple touch icon',
+      status: appleIcon ? 'pass' : 'warn',
+      message: appleIcon ? `Found ${resolveAssetUrl(appleIcon.href, pageUrl)}.` : 'No Apple touch icon was found for iOS home screen previews.',
+      fix: appleIcon ? '' : '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">'
+    },
+    {
+      label: 'Web manifest',
+      status: manifest ? 'pass' : 'warn',
+      message: manifest ? `Found ${resolveAssetUrl(manifest.href, pageUrl)}.` : 'No web app manifest link was found.',
+      fix: manifest ? '' : '<link rel="manifest" href="/site.webmanifest">'
+    }
+  ];
+
+  return {
+    title: 'Favicon Setup',
+    status: sectionStatus(items),
+    items
+  };
+}
+
+function analyzeOgTags(doc, pageUrl) {
+  const meta = (selector) => doc.querySelector(selector)?.getAttribute('content')?.trim() || '';
+  const ogTitle = meta('meta[property="og:title"]');
+  const ogDescription = meta('meta[property="og:description"]');
+  const ogImage = meta('meta[property="og:image"]');
+  const ogUrl = meta('meta[property="og:url"]');
+  const ogType = meta('meta[property="og:type"]');
+  const imageWidth = meta('meta[property="og:image:width"]');
+  const imageHeight = meta('meta[property="og:image:height"]');
+  const twitterCard = meta('meta[name="twitter:card"]');
+  const twitterImage = meta('meta[name="twitter:image"]');
+  const resolvedImage = ogImage ? resolveAssetUrl(ogImage, pageUrl) : '';
+  const imageLooksAbsolute = /^https?:\/\//i.test(ogImage);
+  const dimensionsLookGood = imageWidth === '1200' && imageHeight === '630';
+
+  const items = [
+    {
+      label: 'OG title',
+      status: ogTitle ? 'pass' : 'fail',
+      message: ogTitle ? `Found "${ogTitle}".` : 'Missing og:title.',
+      fix: ogTitle ? '' : '<meta property="og:title" content="Your page title">'
+    },
+    {
+      label: 'OG description',
+      status: ogDescription ? 'pass' : 'fail',
+      message: ogDescription ? `Found "${ogDescription}".` : 'Missing og:description.',
+      fix: ogDescription ? '' : '<meta property="og:description" content="A concise page description">'
+    },
+    {
+      label: 'OG image',
+      status: ogImage ? (imageLooksAbsolute ? 'pass' : 'warn') : 'fail',
+      message: ogImage ? `Found ${resolvedImage}.` : 'Missing og:image.',
+      fix: ogImage ? (imageLooksAbsolute ? '' : '<meta property="og:image" content="https://example.com/og-image.png">') : '<meta property="og:image" content="https://example.com/og-image.png">'
+    },
+    {
+      label: 'OG image dimensions',
+      status: dimensionsLookGood ? 'pass' : imageWidth || imageHeight ? 'warn' : 'warn',
+      message: dimensionsLookGood ? '1200 x 630 image dimensions are declared.' : `Declared dimensions are ${imageWidth || 'missing'} x ${imageHeight || 'missing'}.`,
+      fix: dimensionsLookGood ? '' : '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">'
+    },
+    {
+      label: 'OG URL and type',
+      status: ogUrl && ogType ? 'pass' : 'warn',
+      message: ogUrl && ogType ? `Found ${ogType} metadata for ${ogUrl}.` : 'og:url or og:type is missing.',
+      fix: ogUrl && ogType ? '' : '<meta property="og:type" content="website">\n<meta property="og:url" content="https://example.com/page">'
+    },
+    {
+      label: 'Twitter card',
+      status: twitterCard && (twitterImage || ogImage) ? 'pass' : 'warn',
+      message: twitterCard ? `Found twitter:card="${twitterCard}".` : 'No Twitter card metadata was found.',
+      fix: twitterCard && (twitterImage || ogImage) ? '' : '<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:image" content="https://example.com/og-image.png">'
+    }
+  ];
+
+  return {
+    title: 'Open Graph & Social Tags',
+    status: sectionStatus(items),
+    items
+  };
+}
+
+function sectionStatus(items) {
+  if (items.some((item) => item.status === 'fail')) return 'fail';
+  if (items.some((item) => item.status === 'warn')) return 'warn';
+  return 'pass';
+}
+
+function resolveAssetUrl(value, pageUrl) {
+  try {
+    return new URL(value, pageUrl).href;
+  } catch {
+    return value || 'missing';
+  }
+}
+
 function getFaviconImplementationSteps() {
   return `1. Download favicon.ico and the PNG files.
 2. Copy the files into your site's public root, usually /public or /static.
@@ -891,10 +1220,15 @@ function getOgImplementationSteps(siteName) {
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${safeSite}">
+<meta property="og:title" content="Your page title">
+<meta property="og:description" content="A concise page description">
 <meta property="og:image" content="https://${safeSite}/og-image.png">
+<meta property="og:url" content="https://${safeSite}/">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Your page title">
+<meta name="twitter:description" content="A concise page description">
 <meta name="twitter:image" content="https://${safeSite}/og-image.png">
 
 4. Replace the URL with your real production domain.
