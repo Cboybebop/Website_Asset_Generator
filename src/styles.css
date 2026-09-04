@@ -57,6 +57,7 @@ button {
 
 .tool-panel,
 .output-panel {
+  min-width: 0;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.32);
   border-radius: 8px;
@@ -679,7 +680,8 @@ input[type='range'] {
 .og-output-preview {
   display: grid;
   overflow: hidden;
-  min-height: 240px;
+  width: 100%;
+  min-height: 0;
   place-items: center;
   color: #64748b;
   background: #f7f9fc;
