@@ -9,6 +9,7 @@ A browser-based React tool for creating website favicons and Open Graph preview 
 - Upload PNG, JPG, WebP, or SVG source artwork.
 - Crop and reposition artwork in a square favicon safe area.
 - Adjust zoom and choose transparent or solid backgrounds.
+- Generate light-mode, dark-mode, or paired adaptive favicon sets with independent backgrounds and ready-to-copy `prefers-color-scheme` tags.
 - Generate `favicon.ico`, common PNG favicon sizes, `apple-touch-icon.png`, and `site.webmanifest`.
 - Copy implementation steps for adding the generated files to a website.
 - Switch to an `OG:image` generator tab.
