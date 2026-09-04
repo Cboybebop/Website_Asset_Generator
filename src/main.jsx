@@ -21,6 +21,10 @@ import './styles.css';
 
 const FAVICON_SIZES = [16, 32, 48, 64, 128, 180, 192, 512];
 const ICO_SIZES = [16, 32, 48];
+const APPEARANCE_OPTIONS = {
+  light: { label: 'Light mode', defaultBackground: '#ffffff' },
+  dark: { label: 'Dark mode', defaultBackground: '#111827' }
+};
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const FONT_OPTIONS = [
@@ -80,7 +84,8 @@ function FaviconGenerator() {
   const [fileName, setFileName] = useState('');
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [background, setBackground] = useState('transparent');
+  const [appearance, setAppearance] = useState('both');
+  const [backgrounds, setBackgrounds] = useState({ light: '#ffffff', dark: '#111827' });
   const [generated, setGenerated] = useState(null);
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef(null);
@@ -126,8 +131,9 @@ function FaviconGenerator() {
     ctx.rect(cropX, cropY, cropSize, cropSize);
     ctx.clip();
 
-    if (background !== 'transparent') {
-      ctx.fillStyle = background;
+    const previewBackground = backgrounds[appearance === 'dark' ? 'dark' : 'light'];
+    if (previewBackground !== 'transparent') {
+      ctx.fillStyle = previewBackground;
       ctx.fillRect(cropX, cropY, cropSize, cropSize);
     } else {
       drawCheckerboard(ctx, cropX, cropY, cropSize);
@@ -152,7 +158,7 @@ function FaviconGenerator() {
     ctx.strokeRect(cropX + cropSize / 3, cropY, cropSize / 3, cropSize);
     ctx.strokeRect(cropX, cropY + cropSize / 3, cropSize, cropSize / 3);
     ctx.setLineDash([]);
-  }, [background, image, offset, scale]);
+  }, [appearance, backgrounds, image, offset, scale]);
 
   useEffect(() => {
     drawCropper();
@@ -197,37 +203,34 @@ function FaviconGenerator() {
 
   const generateFavicons = async () => {
     if (!image) return;
-
-    const pngs = await Promise.all(
-      FAVICON_SIZES.map(async (size) => ({
+    const themes = appearance === 'both' ? ['light', 'dark'] : [appearance];
+    const variants = await Promise.all(themes.map(async (theme) => {
+      const useSuffix = appearance === 'both';
+      const pngs = await Promise.all(FAVICON_SIZES.map(async (size) => ({
         size,
-        name: size === 180 ? 'apple-touch-icon.png' : `favicon-${size}x${size}.png`,
-        blob: await renderIconBlob(image, size, scale, offset, background)
-      }))
-    );
-
-    const icoEntries = await Promise.all(
-      ICO_SIZES.map(async (size) => ({
+        name: getIconFileName(size, theme, useSuffix),
+        blob: await renderIconBlob(image, size, scale, offset, backgrounds[theme])
+      })));
+      const icoEntries = await Promise.all(ICO_SIZES.map(async (size) => ({
         size,
-        bytes: new Uint8Array(await (await renderIconBlob(image, size, scale, offset, background)).arrayBuffer())
-      }))
-    );
-
-    const manifest = new Blob([getManifestJson()], { type: 'application/manifest+json' });
-    const ico = new Blob([encodeIco(icoEntries)], { type: 'image/x-icon' });
-    setGenerated({ pngs, ico, manifest });
+        bytes: new Uint8Array(await (await renderIconBlob(image, size, scale, offset, backgrounds[theme])).arrayBuffer())
+      })));
+      return { theme, pngs, ico: new Blob([encodeIco(icoEntries)], { type: 'image/x-icon' }), icoName: useSuffix ? `favicon-${theme}.ico` : 'favicon.ico' };
+    }));
+    const manifest = new Blob([getManifestJson(appearance)], { type: 'application/manifest+json' });
+    setGenerated({ appearance, variants, manifest });
   };
 
   const downloadAll = () => {
     if (!generated) return;
-    downloadBlob(generated.ico, 'favicon.ico');
+    generated.variants.forEach((variant) => downloadBlob(variant.ico, variant.icoName));
     downloadBlob(generated.manifest, 'site.webmanifest');
-    generated.pngs.forEach((file, index) => {
+    generated.variants.flatMap((variant) => variant.pngs).forEach((file, index) => {
       window.setTimeout(() => downloadBlob(file.blob, file.name), (index + 1) * 90);
     });
   };
 
-  const implementation = useMemo(() => getFaviconImplementationSteps(), []);
+  const implementation = useMemo(() => getFaviconImplementationSteps(appearance), [appearance]);
 
   const copySteps = async () => {
     await navigator.clipboard.writeText(implementation);
@@ -268,6 +271,24 @@ function FaviconGenerator() {
         </div>
 
         <div className="controls">
+          <div className="field-row">
+            <span>Color scheme</span>
+            <div className="segmented-control three-segments" role="group" aria-label="Favicon color scheme">
+              {['light', 'dark', 'both'].map((option) => (
+                <button
+                  aria-pressed={appearance === option}
+                  className={appearance === option ? 'segment-button is-active' : 'segment-button'}
+                  key={option}
+                  onClick={() => { setAppearance(option); setGenerated(null); }}
+                  type="button"
+                >
+                  {option === 'both' ? 'Both' : APPEARANCE_OPTIONS[option].label}
+                </button>
+              ))}
+            </div>
+            <small>{appearance === 'both' ? 'Exports paired assets and color-scheme-aware HTML.' : `Exports one favicon set optimized for ${appearance} browser chrome.`}</small>
+          </div>
+
           <label className="control-row">
             <span>
               <ZoomIn size={18} />
@@ -276,7 +297,16 @@ function FaviconGenerator() {
             <input type="range" min="0.5" max="4" step="0.01" value={scale} onChange={(event) => setScale(Number(event.target.value))} disabled={!image} />
           </label>
 
-          <ColorSwatches label="Background" value={background} onChange={setBackground} colors={['transparent', '#ffffff', '#111827', '#0f766e', '#eab308']} />
+          {(appearance === 'both' ? ['light', 'dark'] : [appearance]).map((theme) => (
+            <ColorSwatches
+              key={theme}
+              label={`${APPEARANCE_OPTIONS[theme].label} background`}
+              value={backgrounds[theme]}
+              onChange={(value) => { setBackgrounds((current) => ({ ...current, [theme]: value })); setGenerated(null); }}
+              colors={['transparent', APPEARANCE_OPTIONS[theme].defaultBackground, '#0f766e', '#eab308']}
+              custom
+            />
+          ))}
 
           <div className="button-row">
             <button className="secondary-button" disabled={!image} onClick={resetCrop} type="button">
@@ -302,37 +332,36 @@ function FaviconGenerator() {
           </button>
         </div>
 
-        <div className="preview-grid">
-          {FAVICON_SIZES.map((size) => (
-            <IconPreview generated={generated} key={size} size={size} />
-          ))}
-        </div>
+        {(generated?.variants || (appearance === 'both' ? ['light', 'dark'] : [appearance]).map((theme) => ({ theme, pngs: [] }))).map((variant) => (
+          <div className="variant-preview" key={variant.theme}>
+            <div className="variant-heading"><span className={`theme-dot ${variant.theme}`} />{APPEARANCE_OPTIONS[variant.theme].label}</div>
+            <div className="preview-grid">
+              {FAVICON_SIZES.map((size) => <IconPreview variant={variant} key={size} size={size} />)}
+            </div>
+          </div>
+        ))}
 
         <div className="download-list">
           <h3>Generated Files</h3>
-          <button className="file-row" disabled={!generated} onClick={() => generated && downloadBlob(generated.ico, 'favicon.ico')} type="button">
-            <span>favicon.ico</span>
-            <small>16, 32, and 48 px</small>
-            <Download size={17} />
-          </button>
+          {(generated?.variants || []).map((variant) => (
+            <button className="file-row" key={variant.theme} onClick={() => downloadBlob(variant.ico, variant.icoName)} type="button">
+              <span>{variant.icoName}</span><small>{APPEARANCE_OPTIONS[variant.theme].label} · 16, 32, and 48 px</small><Download size={17} />
+            </button>
+          ))}
           <button className="file-row" disabled={!generated} onClick={() => generated && downloadBlob(generated.manifest, 'site.webmanifest')} type="button">
             <span>site.webmanifest</span>
             <small>192 and 512 px icons</small>
             <Download size={17} />
           </button>
-          {FAVICON_SIZES.map((size) => {
-            const file = generated?.pngs.find((item) => item.size === size);
-            const name = size === 180 ? 'apple-touch-icon.png' : `favicon-${size}x${size}.png`;
-            return (
-              <button className="file-row" disabled={!file} key={size} onClick={() => file && downloadBlob(file.blob, name)} type="button">
-                <span>{name}</span>
+          {(generated?.variants || []).flatMap((variant) => variant.pngs.map((file) => ({ ...file, theme: variant.theme }))).map((file) => (
+              <button className="file-row" key={`${file.theme}-${file.size}`} onClick={() => downloadBlob(file.blob, file.name)} type="button">
+                <span>{file.name}</span>
                 <small>
-                  {size} x {size} px
+                  {file.size} x {file.size} px · {APPEARANCE_OPTIONS[file.theme].label}
                 </small>
                 <Download size={17} />
               </button>
-            );
-          })}
+          ))}
         </div>
 
         <StepsPanel title="Implementation Steps" copied={copied} onCopy={copySteps} content={implementation} />
@@ -751,7 +780,7 @@ function ColorSwatches({ label, value, onChange, colors, custom = false }) {
         ))}
         {custom && (
           <label className="custom-color" title="Custom color">
-            <input aria-label="Custom accent color" type="color" value={value} onChange={(event) => onChange(event.target.value)} />
+            <input aria-label={`Custom ${label.toLowerCase()} color`} type="color" value={value === 'transparent' ? '#ffffff' : value} onChange={(event) => onChange(event.target.value)} />
           </label>
         )}
       </div>
@@ -774,9 +803,9 @@ function StepsPanel({ title, copied, onCopy, content }) {
   );
 }
 
-function IconPreview({ generated, size }) {
+function IconPreview({ variant, size }) {
   const [url, setUrl] = useState('');
-  const file = generated?.pngs.find((item) => item.size === size);
+  const file = variant?.pngs.find((item) => item.size === size);
 
   useEffect(() => {
     if (!file) {
@@ -789,9 +818,9 @@ function IconPreview({ generated, size }) {
   }, [file]);
 
   return (
-    <div className="preview-tile">
+    <div className={`preview-tile preview-${variant.theme}`}>
       <div className="preview-frame">
-        {url ? <img alt={`${size} by ${size} favicon preview`} src={url} style={{ width: Math.min(size, 56), height: Math.min(size, 56) }} /> : <span />}
+        {url ? <img alt={`${APPEARANCE_OPTIONS[variant.theme].label} ${size} by ${size} favicon preview`} src={url} style={{ width: Math.min(size, 56), height: Math.min(size, 56) }} /> : <span />}
       </div>
       <strong>{size}px</strong>
     </div>
@@ -852,6 +881,11 @@ async function renderIconBlob(image, size, scale, offset, background) {
   ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
+function getIconFileName(size, theme, useSuffix) {
+  const suffix = useSuffix ? `-${theme}` : '';
+  return size === 180 ? `apple-touch-icon${suffix}.png` : `favicon${suffix}-${size}x${size}.png`;
 }
 
 function renderOgCanvas(canvas, settings) {
@@ -1189,7 +1223,24 @@ function resolveAssetUrl(value, pageUrl) {
   }
 }
 
-function getFaviconImplementationSteps() {
+function getFaviconImplementationSteps(appearance) {
+  if (appearance === 'both') {
+    return `1. Download both favicon sets and copy them into your site's public root.
+2. Add color-scheme-aware tags inside the <head> of every page:
+
+<link rel="icon" href="/favicon-light.ico" sizes="any" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon-dark.ico" sizes="any" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-light-32x32.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-dark-32x32.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-light-16x16.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-dark-16x16.png" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-light.png">
+<link rel="manifest" href="/site.webmanifest">
+
+3. The light icon is the fallback for surfaces that do not honor media queries.
+4. Clear browser cache, then switch your operating-system appearance to test both icons.`;
+  }
+
   return `1. Download favicon.ico and the PNG files.
 2. Copy the files into your site's public root, usually /public or /static.
 3. Add these tags inside the <head> of every page:
@@ -1235,12 +1286,13 @@ function getOgImplementationSteps(siteName) {
 5. Test the page with a social card validator after deployment.`;
 }
 
-function getManifestJson() {
+function getManifestJson(appearance = 'light') {
+  const suffix = appearance === 'both' ? '-light' : '';
   return `${JSON.stringify(
     {
       icons: [
-        { src: '/favicon-192x192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/favicon-512x512.png', sizes: '512x512', type: 'image/png' }
+        { src: `/favicon${suffix}-192x192.png`, sizes: '192x192', type: 'image/png' },
+        { src: `/favicon${suffix}-512x512.png`, sizes: '512x512', type: 'image/png' }
       ]
     },
     null,
