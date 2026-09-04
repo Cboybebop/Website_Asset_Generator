@@ -90,6 +90,10 @@ function FaviconGenerator() {
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
+  const generationRef = useRef(0);
+  const settingsRef = useRef(null);
+  const generationSettings = useMemo(() => ({ image, appearance, backgrounds, scale, offset }), [appearance, backgrounds, image, offset, scale]);
+  settingsRef.current = generationSettings;
 
   useEffect(() => {
     if (!source) {
@@ -203,6 +207,9 @@ function FaviconGenerator() {
 
   const generateFavicons = async () => {
     if (!image) return;
+    const generationId = generationRef.current + 1;
+    generationRef.current = generationId;
+    const requestedSettings = generationSettings;
     const themes = appearance === 'both' ? ['light', 'dark'] : [appearance];
     const variants = await Promise.all(themes.map(async (theme) => {
       const useSuffix = appearance === 'both';
@@ -218,12 +225,15 @@ function FaviconGenerator() {
       return { theme, pngs, ico: new Blob([encodeIco(icoEntries)], { type: 'image/x-icon' }), icoName: useSuffix ? `favicon-${theme}.ico` : 'favicon.ico' };
     }));
     const manifest = new Blob([getManifestJson(appearance)], { type: 'application/manifest+json' });
-    setGenerated({ appearance, variants, manifest });
+    if (generationRef.current !== generationId || settingsRef.current !== requestedSettings) return;
+    const fallbackIco = appearance === 'both' ? variants.find((variant) => variant.theme === 'light').ico : null;
+    setGenerated({ appearance, variants, manifest, fallbackIco });
   };
 
   const downloadAll = () => {
     if (!generated) return;
     generated.variants.forEach((variant) => downloadBlob(variant.ico, variant.icoName));
+    if (generated.fallbackIco) downloadBlob(generated.fallbackIco, 'favicon.ico');
     downloadBlob(generated.manifest, 'site.webmanifest');
     generated.variants.flatMap((variant) => variant.pngs).forEach((file, index) => {
       window.setTimeout(() => downloadBlob(file.blob, file.name), (index + 1) * 90);
@@ -348,6 +358,11 @@ function FaviconGenerator() {
               <span>{variant.icoName}</span><small>{APPEARANCE_OPTIONS[variant.theme].label} · 16, 32, and 48 px</small><Download size={17} />
             </button>
           ))}
+          {appearance === 'both' && (
+            <button className="file-row" disabled={!generated?.fallbackIco} onClick={() => generated?.fallbackIco && downloadBlob(generated.fallbackIco, 'favicon.ico')} type="button">
+              <span>favicon.ico</span><small>Unconditional light-mode fallback</small><Download size={17} />
+            </button>
+          )}
           <button className="file-row" disabled={!generated} onClick={() => generated && downloadBlob(generated.manifest, 'site.webmanifest')} type="button">
             <span>site.webmanifest</span>
             <small>192 and 512 px icons</small>
@@ -1225,9 +1240,10 @@ function resolveAssetUrl(value, pageUrl) {
 
 function getFaviconImplementationSteps(appearance) {
   if (appearance === 'both') {
-    return `1. Download both favicon sets and copy them into your site's public root.
+    return `1. Download both favicon sets, including the fallback favicon.ico, and copy them into your site's public root.
 2. Add color-scheme-aware tags inside the <head> of every page:
 
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon-light.ico" sizes="any" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/favicon-dark.ico" sizes="any" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-light-32x32.png" media="(prefers-color-scheme: light)">
@@ -1237,7 +1253,7 @@ function getFaviconImplementationSteps(appearance) {
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-light.png">
 <link rel="manifest" href="/site.webmanifest">
 
-3. The light icon is the fallback for surfaces that do not honor media queries.
+3. The unconditional favicon.ico contains the light icon for surfaces that do not honor media queries.
 4. Clear browser cache, then switch your operating-system appearance to test both icons.`;
   }
 
